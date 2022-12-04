@@ -1,51 +1,60 @@
 #include "common.h"
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 #include <cstdio>
 #include <pthread.h>
-#include <string.h>
 #include <cstdlib>
-#include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <arpa/inet.h>
-#define PORT 2222
 
+bool terminate=false;
+bool new_sent_message=false;
 pthread_t listen_t;
 pthread_t send_t;
-size_t buffersize = 1024;
-char* buffer;
-bool terminate = false;
-bool new_sent_message = false;
 
-int sock = 0, valread, client_fd;
-struct sockaddr_in serv_addr;
-char* hello = "Hello from client";
-char listen_buffer[1024] = { 0 };
- 
-int setSocket(){
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        printf("\n Socket creation error \n");
+int socket_desc;
+struct sockaddr_in server_addr;
+size_t packetsize = 100;
+char *server_packet;
+char *client_packet;
+socklen_t server_struct_length = sizeof(server_addr);
+
+int setSocket(void){
+    server_packet = (char*) std::malloc(packetsize*sizeof(char));
+    client_packet = (char*) std::malloc(packetsize*sizeof(char));
+    
+    memset(server_packet, '\0', sizeof(server_packet));
+    memset(client_packet, '\0', sizeof(client_packet));
+    
+    // Create socket:
+    socket_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    
+    if(socket_desc < 0){
+        printf("Error while creating socket\n");
         return -1;
     }
- 
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
- 
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr)<= 0) {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
-    }
- 
-    if ((client_fd = connect(sock, (struct sockaddr*)&serv_addr,sizeof(serv_addr)))< 0) {
-        printf("\nConnection Failed \n");
-        return -1;
-    } 
+    printf("Socket created successfully\n");
+    
+    // Set port and IP:
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(2000);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    
     return 0;
 }
 
 void* listen_routine(void* args){
     while(!terminate){
-        valread = read(sock, listen_buffer, 1024);
-        printf("%s\n", listen_buffer);;
+        if(recvfrom(socket_desc, server_packet, sizeof(server_packet), 0,
+            (struct sockaddr*)&server_addr, &server_struct_length) < 0){
+            printf("Error while receiving server's msg\n");
+            return nullptr;
+        }
+        
+        printf("Server's response: %s\n", server_packet);
+        return nullptr; //delete
     }
     return nullptr;
 }
@@ -53,9 +62,11 @@ void* listen_routine(void* args){
 void* send_routine(void* args){
     while(!terminate){
         if(new_sent_message){
-            new_sent_message = false;
-            send(sock, buffer, strlen(buffer), 0);
-            printf("Hello message sent\n");
+            if(sendto(socket_desc, client_packet, strlen(client_packet), 0,
+                (struct sockaddr*)&server_addr, server_struct_length) < 0){
+                printf("Unable to send message\n");
+                return nullptr;
+            }
         }
     }
     return nullptr;
@@ -64,8 +75,9 @@ void* send_routine(void* args){
 int loop(){
     int newLineCount = 0;
     while(1){
-        getline(&buffer, &buffersize ,stdin);
-        if(!strcmp(buffer,"\n")){
+        printf("Enter message: ");
+        getline(&client_packet, &packetsize ,stdin);
+        if(!strcmp(client_packet,"\n")){
             ++newLineCount;
         }
         else{
@@ -73,17 +85,14 @@ int loop(){
         }
         if(newLineCount == 3){ //termination condition
             terminate = true;
-            close(client_fd);
+            close(socket_desc);
             return 0;
         }
-        buffer[strlen(buffer)-1] = '\0';
         new_sent_message = true;
     }
 }
 
 int main(void){
-    buffer = (char*) std::malloc(buffersize*sizeof(char));
-
     setSocket();
     pthread_create(&listen_t, nullptr, &listen_routine, nullptr);
     pthread_create(&send_t, nullptr, &send_routine, nullptr);
@@ -92,5 +101,4 @@ int main(void){
 
     pthread_join(listen_t, nullptr);
     pthread_join(send_t, nullptr);
-    return 0;
 }
