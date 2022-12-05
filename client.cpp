@@ -9,7 +9,6 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-bool terminate=false;
 pthread_t listen_t;
 pthread_t send_t;
 
@@ -17,8 +16,10 @@ unsigned int packetCount = 0;
 unsigned int ackCount = 0;
 size_t packetsize = 16;
 size_t contentsize = 12;
+size_t buffersize = 1024;
 myPacket *server_packet;
 myPacket *client_packet;
+char *buffer;
 
 int socket_desc;
 struct sockaddr_in server_addr;
@@ -29,28 +30,27 @@ char *terminal_ip;
 int setSocket(void){
     server_packet = (myPacket*) std::malloc(sizeof(myPacket));
     client_packet = (myPacket*) std::malloc(sizeof(myPacket));
+    buffer = (char*) std::malloc(sizeof(char)*1024);
     
     memset(server_packet, '\0', sizeof(server_packet));
     memset(client_packet, '\0', sizeof(client_packet));
     
-    // Create socket:
-    socket_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    socket_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // Generate the Socket
     
     if(socket_desc < 0){
         perror("Error while creating socket\n");
         exit(EXIT_FAILURE);
     }
     
-    // Set port and IP:
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr =  inet_addr(terminal_ip);
+    server_addr.sin_port = htons(port); //set the port
+    server_addr.sin_addr.s_addr =  inet_addr(terminal_ip); //set the IP
     
     return 0;
 }
 
 void* listen_routine(void* args){
-    while(!terminate){
+    while(1){
         if(recvfrom(socket_desc, server_packet, sizeof(server_packet), 0,
             (struct sockaddr*)&server_addr, &server_struct_length) < 0){
             perror("Error while receiving server's msg\n");
@@ -77,15 +77,15 @@ void* send_routine(void* args){
         else{
             newLineCount = 0;
         }
-        if(newLineCount == 3){ //termination condition
-            terminate = true;
-            close(socket_desc);
-            return 0;
-        }
         if(sendto(socket_desc, client_packet, packetsize, 0,
             (struct sockaddr*)&server_addr, server_struct_length) < 0){
             perror("Unable to send message\n");
             exit(EXIT_FAILURE);
+        }
+        if(newLineCount == 3){ //termination condition
+            pthread_cancel(listen_t);
+            close(socket_desc);
+            return 0;
         }
     }
 }
