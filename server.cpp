@@ -12,19 +12,22 @@
 bool terminate = false;
 pthread_t listen_t;
 pthread_t send_t;
+
 unsigned int packetCount = 0;
 unsigned int ackCount = 0;
+size_t packetsize = 16;
+size_t contentsize = 12;
+myPacket *server_packet;
+myPacket *client_packet;
 
 int socket_desc;
 struct sockaddr_in server_addr, client_addr;
-size_t buffersize = 100;
-char *server_packet;
-char *client_packet;
 socklen_t client_struct_length = sizeof(client_addr);
+int port = 0;
 
 int setSocket(){
-    server_packet = (char*) std::malloc(buffersize*sizeof(char));
-     client_packet = (char*) std::malloc(buffersize*sizeof(char));
+    server_packet = (myPacket*) std::malloc(sizeof(myPacket));
+    client_packet = (myPacket*) std::malloc(sizeof(myPacket));
 
     memset(server_packet, '\0', sizeof(server_packet));
     memset( client_packet, '\0', sizeof( client_packet));
@@ -32,35 +35,40 @@ int setSocket(){
     socket_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     
     if(socket_desc < 0){
-        printf("Error while creating socket\n");
-        return -1;
+        perror("Error while creating socket\n");
+        exit(EXIT_FAILURE);
     }
-    printf("Socket created successfully\n");
     
     // Set port and IP:
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(2000);
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
     
     // Bind to the set port and IP:
     if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
-        printf("Couldn't bind to the port\n");
-        return -1;
+        perror("Couldn't bind to the port\n");
+        exit(EXIT_FAILURE);
     }
-    printf("Done with binding\n");
     return 0;    
 }
 
 void* listen_routine(void* args){
     int newLineCount = 0;
+
     while(!terminate){
-        if (recvfrom(socket_desc,  client_packet, sizeof( client_packet), 0,
+        if (recvfrom(socket_desc,  client_packet, packetsize, 0,
             (struct sockaddr*)&client_addr, &client_struct_length) < 0){
-            printf("Couldn't receive\n");
-            return nullptr;
+            perror("Couldn't receive\n");
+            exit(EXIT_FAILURE);
+        }
+        if(packetCount = client_packet->id){
+            continue;
+        }
+        else{
+            packetCount = client_packet->id;
         }
 
-        if(!strcmp(client_packet,"\n")){
+        if(!strcmp(client_packet->content,"\n")){
             ++newLineCount;
         }
         else{
@@ -72,10 +80,6 @@ void* listen_routine(void* args){
             close(socket_desc);
             return 0;
         }
-        
-        printf("Received message from IP: %s and port: %i\n",
-        inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-        
     }
     return nullptr;
 }
@@ -83,22 +87,23 @@ void* listen_routine(void* args){
 void* send_routine(void* args){
     while(!terminate){
         if(packetCount>ackCount){
-            printf("Msg from client: %s\n",  client_packet);
-            strcpy(server_packet,  client_packet);
+            printf("Msg from client: %s\n",  client_packet->content);
+            server_packet = client_packet;
             
-            if (sendto(socket_desc, server_packet, strlen(server_packet), 0,
+            if (sendto(socket_desc, server_packet, packetsize, 0,
                 (struct sockaddr*)&client_addr, client_struct_length) < 0){
-                printf("Can't send\n");
-                return nullptr;
+                perror("Can't send\n");
+                exit(EXIT_FAILURE);
             }
             ++ackCount;
-            printf("%d\n",ackCount);
         }
     }
     return nullptr;
 }
 
-int main(void){
+int main(int argc, char** argv){
+    port = atoi(argv[1]);
+
     setSocket();
     pthread_create(&listen_t, nullptr, &listen_routine, nullptr);
     pthread_create(&send_t, nullptr, &send_routine, nullptr);
