@@ -32,9 +32,6 @@ int setSocket(void){
     client_packet = (myPacket*) std::malloc(sizeof(myPacket));
     buffer = (char*) std::malloc(sizeof(char)*1024);
     
-    memset(server_packet, '\0', sizeof(server_packet));
-    memset(client_packet, '\0', sizeof(client_packet));
-    
     socket_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // Generate the Socket
     
     if(socket_desc < 0){
@@ -63,24 +60,37 @@ void* listen_routine(void* args){
     return nullptr;
 }
 
+int clipper(char (&c_content)[12], char *buffer, int start, int end){
+    for(int i = start ; i < end ; ++i){
+        c_content[i%12] = buffer[i];
+    }
+    return 0;
+}
+
 void* send_routine(void* args){
     int newLineCount = 0;
-    char *tempBuffer = (char*) std::malloc(sizeof(char)*contentsize);
+    int string_len = 0;
+    int packetDivs = 1;
+
     while(1){
-        getline(&tempBuffer, &packetsize ,stdin);
-        strcpy(client_packet->content,tempBuffer);
-        ++packetCount;
-        client_packet->id = packetCount;
-        if(!strcmp(client_packet->content,"\n")){
+        getline(&buffer, &buffersize ,stdin);
+        packetDivs = (strlen(buffer)/12+1);
+
+        for(int i = 0 ; i<packetDivs; ++i){
+            ++packetCount;
+            client_packet->id = packetCount;
+            clipper(client_packet->content,buffer,i,(i+1)*12);
+            if(sendto(socket_desc, client_packet, packetsize, 0,
+                (struct sockaddr*)&server_addr, server_struct_length) < 0){
+                perror("Unable to send message\n");
+                exit(EXIT_FAILURE);
+            }
+        }
+        if(!strcmp(buffer,"\n")){
             ++newLineCount;
         }
         else{
             newLineCount = 0;
-        }
-        if(sendto(socket_desc, client_packet, packetsize, 0,
-            (struct sockaddr*)&server_addr, server_struct_length) < 0){
-            perror("Unable to send message\n");
-            exit(EXIT_FAILURE);
         }
         if(newLineCount == 3){ //termination condition
             pthread_cancel(listen_t);
