@@ -12,6 +12,8 @@
 pthread_t listen_t;
 pthread_t send_t;
 bool terminate = false;
+bool wait_send = true;
+bool wait_listen = false;
 
 unsigned int packetCount = 0;
 unsigned int ackCount = 0;
@@ -28,9 +30,6 @@ int port = 0;
 int setSocket(){
     server_packet = (myPacket*) std::malloc(sizeof(myPacket));
     client_packet = (myPacket*) std::malloc(sizeof(myPacket));
-
-    memset(server_packet, '\0', sizeof(server_packet));
-    memset(client_packet, '\0', sizeof( client_packet));
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // Generate the Socket
     
@@ -55,6 +54,7 @@ void* listen_routine(void* args){
     int newLineCount = 0;
 
     while(1){
+        if(wait_send){continue;} //wait for send
         if (recvfrom(socket_desc,  client_packet, packetsize, 0,
             (struct sockaddr*)&client_addr, &client_struct_length) < 0){
             perror("Couldn't receive\n");
@@ -74,12 +74,15 @@ void* listen_routine(void* args){
             terminate = true;
             return nullptr;
         }
+        wait_listen = false;
+        wait_send = true;
     }
     return nullptr;
 }
 
 void* send_routine(void* args){
     while(!terminate){
+        if(wait_listen){continue;} //wait for send
         if(packetCount>ackCount){
             server_packet = client_packet;
             
@@ -90,6 +93,8 @@ void* send_routine(void* args){
             }
             ++ackCount;
         }
+        wait_listen = true;
+        wait_send = false;
     }
     return nullptr;
 }
