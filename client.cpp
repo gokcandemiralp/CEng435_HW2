@@ -75,7 +75,7 @@ int setSocket(void){
     
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port); //set the port
-    server_addr.sin_addr.s_addr =  inet_addr("127.0.0.1"); //set the IP
+    server_addr.sin_addr.s_addr =  inet_addr("172.24.0.10"); //set the IP
     
     return 0;
 }
