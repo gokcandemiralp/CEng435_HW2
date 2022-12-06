@@ -20,38 +20,41 @@ pthread_t send_t;
 unsigned int packetCount = 0;
 unsigned int windowSize = 8;
 unsigned int windowTail = 1;
-unsigned int windowHead = windowTail + windowSize;
+unsigned int windowHead = windowTail + windowSize - 1;
 
 bool terminate = false;
 bool wait_send = false;
 bool wait_listen = true;
 
-unsigned int lastValidID = 0;
+unsigned int lastValidID = 1;
 size_t packetsize = 16;
 size_t contentsize = 12;
 myPacket *server_packet;
 myPacket *client_packet;
-myPacket *packetBuffer;
+myPacket *temp_packet;
+std::vector<myPacket> packetBuffer;
 
 int socket_desc;
 struct sockaddr_in server_addr, client_addr;
 socklen_t client_struct_length = sizeof(client_addr);
 int port = 2222;
 
-int packetBufferManager(myPacket newPacket){
-    for(int i = windowSize ; i>1 ; --i){ //going from top of the stack to bottom
-        packetBuffer[i-1] = packetBuffer[i-2];
-    }
-    packetBuffer[0] = newPacket;
-    return 0;
-}
-
 int begin(){
     server_packet = (myPacket*) std::malloc(sizeof(myPacket));
     client_packet = (myPacket*) std::malloc(sizeof(myPacket));
-    packetBuffer = (myPacket*) std::malloc(sizeof(myPacket)*windowSize); //keep as many packets as window size
+    temp_packet = (myPacket*) std::malloc(sizeof(myPacket));
 
     return 0;
+}
+
+bool intSearchBuffer(unsigned int search_id){
+    for(myPacket i : packetBuffer){
+        if(i.id ==search_id){
+            *temp_packet = i;
+            return true;
+        }
+    }
+    return false;
 }
 
 int setSocket(){
@@ -65,7 +68,7 @@ int setSocket(){
     
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port); //set the port
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); //set the IP's
+    server_addr.sin_addr.s_addr = inet_addr("172.24.0.10"); //set the IP's
     
     if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){ // make the binding for setting port and IP
         perror("Couldn't bind to the port\n");
@@ -85,17 +88,21 @@ void* listen_routine(void* args){
             exit(EXIT_FAILURE);
         }
 
-        printf("%s",  client_packet->content);
-        if(!strcmp(client_packet->content,"\n")){
-            ++newLineCount;
-        }
-        else{
-            newLineCount = 0;
-        }
-        if(newLineCount == 3){ //termination condition
-            pthread_cancel(send_t);
-            terminate = true;
-            return nullptr;
+        if(!intSearchBuffer(client_packet->id)){packetBuffer.push_back(*client_packet);}
+        if(intSearchBuffer(lastValidID)){
+            printf("%s",  temp_packet->content);
+            ++lastValidID;
+            if(!strcmp(temp_packet->content,"\n")){
+                ++newLineCount;
+            }
+            else{
+                newLineCount = 0;
+            }
+            if(newLineCount == 3){ //termination condition
+                pthread_cancel(send_t);
+                terminate = true;
+                return nullptr;
+            }
         }
         wait_listen = false;
         wait_send = true;
