@@ -16,8 +16,10 @@
 
 //----------------Some_Socket_Declerations--------------------
 
-int socket_desc;
-struct sockaddr_in server_addr;
+int socket_desc_1;
+int socket_desc_2;
+struct sockaddr_in server_addr_1;
+struct sockaddr_in server_addr_2, client_addr_2;
 
 //----------------Some_Constants--------------------
 
@@ -25,13 +27,14 @@ unsigned int windowSize = 8;
 size_t packetsize = 16;
 size_t contentsize = 11;
 int port = 2222;
-socklen_t server_struct_length = sizeof(server_addr);
+socklen_t client_struct_length = sizeof(client_addr_2);
+socklen_t server_struct_length = sizeof(server_addr_1);
 float timeoutDuration = 0.211;
 size_t inputBufferSize = 1034; // it is 1034 and not 1024 becuse it is divisible by 11
 
 //----------------Global_Variables--------------------
 
-pthread_t listen_t,send_packet_t,send_ack_t,backn_t;
+pthread_t listen_ack_t,listen_packet_t,send_packet_t,send_ack_t,backn_t;
 
 unsigned int S_lastValidID = 0; //send progress counter
 unsigned int R_lastValidID = 1; //receive progress counter
@@ -47,8 +50,11 @@ std::chrono::_V2::system_clock::time_point tailTimeout;
 int newLineCount = 0;
 int packetDivs = 1;
 
-myPacket *server_packet;
-myPacket *client_packet;
+myPacket *server_packet_1;
+myPacket *client_packet_1;
+
+myPacket *server_packet_2;
+myPacket *client_packet_2;
 myPacket *temp_packet;
 
 myPacket *packetStack;
@@ -104,61 +110,107 @@ bool eraseWithID(unsigned int erase_id){
 //----------------Code_Starts_Here--------------------
 
 int begin(){
-    server_packet = (myPacket*) std::malloc(sizeof(myPacket));
-    client_packet = (myPacket*) std::malloc(sizeof(myPacket));
+    server_packet_1 = (myPacket*) std::malloc(sizeof(myPacket));
+    client_packet_1 = (myPacket*) std::malloc(sizeof(myPacket));
+
+    server_packet_2 = (myPacket*) std::malloc(sizeof(myPacket));
+    client_packet_2 = (myPacket*) std::malloc(sizeof(myPacket));
     packetStack = (myPacket*) std::malloc(sizeof(myPacket)*windowSize); //keep as many packets as window size
+    temp_packet = (myPacket*) std::malloc(sizeof(myPacket));
     inputBuffer = (char*) std::malloc(sizeof(char)*1034); // it is 1034 and not 1024 becuse it is divisible by 11
 
     return 0;
 }
 
-int setSocket(void){
+int setSocket_1(void){
   
-    socket_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // Generate the Socket
+    socket_desc_1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // Generate the Socket
     
-    if(socket_desc < 0){
+    if(socket_desc_1 < 0){
         perror("Error while creating socket\n");
         exit(EXIT_FAILURE);
     }
     
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port); //set the port
-    server_addr.sin_addr.s_addr =  inet_addr("127.0.0.1"); //set the IP
+    server_addr_1.sin_family = AF_INET;
+    server_addr_1.sin_port = htons(port); //set the port
+    server_addr_1.sin_addr.s_addr =  inet_addr("127.0.0.1"); //set the IP
     
     return 0;
 }
 
-void listen_for_acks(){
-    if(server_packet->id >= windowTail){ //if it is a significant package
-        if(!std::count(receivedAckVec.begin(), receivedAckVec.end(), server_packet->id)){receivedAckVec.push_back(server_packet->id);} //if first time save ack
-        if(windowTail == server_packet->id || std::count(receivedAckVec.begin(), receivedAckVec.end(), windowTail)){ //check if tail ack is received
-            receivedAckVec.erase(std::remove(receivedAckVec.begin(), receivedAckVec.end(), windowTail), receivedAckVec.end()); //delete old tail
-            windowTail = windowTail + 1; //the last received Ack is pushed out of the window
-            windowHead = windowTail + windowSize - 1; //the next packet is added to the window and it is now sendable
-            tailTimeout = std::chrono::system_clock::now(); //reset the timeout value to now
-        }
+int setSocket_2(){
+    socket_desc_2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // Generate the Socket
+    
+    if(socket_desc_2 < 0){
+        perror("Error while creating socket\n");
+        exit(EXIT_FAILURE);
     }
-    printf("[tail: %d| head: %d] Ack Number: %d \n",windowTail,windowHead, server_packet->id);
-}
-void listen_for_packets(){
-    ;
+    
+    server_addr_2.sin_family = AF_INET;
+    server_addr_2.sin_port = htons(port+1); //set the port
+    server_addr_2.sin_addr.s_addr = inet_addr("127.0.0.1"); //set the IP's
+    
+    if(bind(socket_desc_2, (struct sockaddr*)&server_addr_2, sizeof(server_addr_2)) < 0){ // make the binding for setting port and IP
+        perror("Couldn't bind to the port\n");
+        exit(EXIT_FAILURE);
+    }
+    return 0;    
 }
 
-void* listen_routine(void* args){
+void* listen_packet_routine(void* args){
     while(1){
-        if(recvfrom(socket_desc, server_packet, sizeof(server_packet), 0,
-            (struct sockaddr*)&server_addr, &server_struct_length) < 0){
-            perror("Error while receiving server's msg\n");
+        if(wait_ack_send){continue;} //wait for send
+        if (recvfrom(socket_desc_2,  client_packet_2, packetsize, 0,
+            (struct sockaddr*)&client_addr_2, &client_struct_length) < 0){
+            perror("Couldn't receive\n");
             exit(EXIT_FAILURE);
-            return nullptr;
         }
-        listen_for_acks();
-        listen_for_packets();
+        if(!intSearchBuffer(client_packet_2->id)){receivedPacketVec.push_back(*client_packet_2);} // if packet never received before save it
+        if(intSearchBuffer(R_lastValidID)){ // read the saved packet buffer in order
+            printf("%s",  temp_packet->content); // print the next buffer in line
+            eraseWithID(R_lastValidID); //erase the already printed packet prom the buffer
+            ++R_lastValidID;
+            if(!strcmp(temp_packet->content,"\n")){
+                ++newLineCount;
+            }
+            else{
+                newLineCount = 0;
+            }
+            if(newLineCount == 3){ //termination condition
+                pthread_cancel(send_ack_t);
+                terminate = true;
+            }
+        }
+        if(terminate){return nullptr;} //if termination signal is given
+        wait_ack_listen = false;
+        wait_ack_send = true;
     }
     return nullptr;
 }
 
-void* send_routine(void* args){
+void* listen_ack_routine(void* args){
+    while(1){
+        if(recvfrom(socket_desc_1, server_packet_1, sizeof(server_packet_1), 0,
+            (struct sockaddr*)&server_addr_1, &server_struct_length) < 0){
+            perror("Error while receiving server's msg\n");
+            exit(EXIT_FAILURE);
+            return nullptr;
+        }
+        if(server_packet_1->id >= windowTail){ //if it is a significant package
+            if(!std::count(receivedAckVec.begin(), receivedAckVec.end(), server_packet_1->id)){receivedAckVec.push_back(server_packet_1->id);} //if first time save ack
+            if(windowTail == server_packet_1->id || std::count(receivedAckVec.begin(), receivedAckVec.end(), windowTail)){ //check if tail ack is received
+                receivedAckVec.erase(std::remove(receivedAckVec.begin(), receivedAckVec.end(), windowTail), receivedAckVec.end()); //delete old tail
+                windowTail = windowTail + 1; //the last received Ack is pushed out of the window
+                windowHead = windowTail + windowSize - 1; //the next packet is added to the window and it is now sendable
+                tailTimeout = std::chrono::system_clock::now(); //reset the timeout value to now
+            }
+        }
+        printf("[tail: %d| head: %d] Ack Number: %d \n",windowTail,windowHead, server_packet_1->id);
+    }
+    return nullptr;
+}
+
+void* send_packet_routine(void* args){
 
     while(1){
         getline(&inputBuffer, &inputBufferSize ,stdin);
@@ -167,11 +219,11 @@ void* send_routine(void* args){
         for(int i = 0 ; i<packetDivs; ++i){
             while(S_lastValidID >= windowHead){continue;} //only sending packets up to window head
             ++S_lastValidID;
-            client_packet->id = S_lastValidID;
-            clipper(client_packet->content,inputBuffer,i,(i+1)*contentsize);
-            packetStackManager(*client_packet); //add the to be sent package to the window package stack
-            if(sendto(socket_desc, client_packet, packetsize, 0,
-                (struct sockaddr*)&server_addr, server_struct_length) < 0){
+            client_packet_1->id = S_lastValidID;
+            clipper(client_packet_1->content,inputBuffer,i*contentsize,(i+1)*contentsize);
+            packetStackManager(*client_packet_1); //add the to be sent package to the window package stack
+            if(sendto(socket_desc_1, client_packet_1, packetsize, 0,
+                (struct sockaddr*)&server_addr_1, server_struct_length) < 0){
                 perror("Unable to send message\n");
                 exit(EXIT_FAILURE);
             }
@@ -184,9 +236,9 @@ void* send_routine(void* args){
             newLineCount = 0;
         }
         if(newLineCount == 3){ //termination condition
-            pthread_cancel(listen_t);
+            pthread_cancel(listen_ack_t);
             pthread_cancel(backn_t);
-            close(socket_desc);
+            close(socket_desc_1);
             return 0;
         }
     }
@@ -200,8 +252,8 @@ void* backn_routine(void* args){
                 printf("Packet: %d timed out\n",windowTail);
                 for(int i = stackSize-1 ; i >= 0 ; --i){
                     myPacket sendPacket = packetStack[i];
-                    if(sendto(socket_desc, &sendPacket, packetsize, 0,
-                            (struct sockaddr*)&server_addr, server_struct_length) < 0){
+                    if(sendto(socket_desc_1, &sendPacket, packetsize, 0,
+                            (struct sockaddr*)&server_addr_1, server_struct_length) < 0){
                             perror("Unable to send message\n");
                             exit(EXIT_FAILURE);
                     }
@@ -217,12 +269,21 @@ void* backn_routine(void* args){
 
 int main(int argc, char** argv){
     begin();
-    setSocket();
-    pthread_create(&listen_t, nullptr, &listen_routine, nullptr);
-    pthread_create(&send_packet_t, nullptr, &send_routine, nullptr);
+    setSocket_1();
+    setSocket_2();
+
+    pthread_create(&listen_packet_t, nullptr, &listen_packet_routine, nullptr);
+    //pthread_create(&send_ack_t, nullptr, &send_ack_routine, nullptr);
+
+    pthread_create(&listen_ack_t, nullptr, &listen_ack_routine, nullptr);
+    pthread_create(&send_packet_t, nullptr, &send_packet_routine, nullptr);
     pthread_create(&backn_t, nullptr, &backn_routine, nullptr);
 
     pthread_join(backn_t, nullptr);
-    pthread_join(listen_t, nullptr);
+    pthread_join(listen_ack_t, nullptr);
     pthread_join(send_packet_t, nullptr);
+
+    pthread_join(listen_packet_t, nullptr);
+    //pthread_join(send_ack_t, nullptr);
+
 }
