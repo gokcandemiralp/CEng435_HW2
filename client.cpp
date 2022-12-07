@@ -210,6 +210,22 @@ void* listen_ack_routine(void* args){
     return nullptr;
 }
 
+void* send_ack_routine(void* args){
+    while(!terminate){
+        if(wait_ack_listen){continue;} //wait for send
+        server_packet_2 = client_packet_2;
+        
+        if (sendto(socket_desc_2, server_packet_2, packetsize, 0,
+            (struct sockaddr*)&client_addr_2, client_struct_length) < 0){
+            perror("Can't send\n");
+            exit(EXIT_FAILURE);
+        }
+        wait_ack_listen = true;
+        wait_ack_send = false;
+    }
+    return nullptr;
+}
+
 void* send_packet_routine(void* args){
 
     while(1){
@@ -273,7 +289,7 @@ int main(int argc, char** argv){
     setSocket_2();
 
     pthread_create(&listen_packet_t, nullptr, &listen_packet_routine, nullptr);
-    //pthread_create(&send_ack_t, nullptr, &send_ack_routine, nullptr);
+    pthread_create(&send_ack_t, nullptr, &send_ack_routine, nullptr);
 
     pthread_create(&listen_ack_t, nullptr, &listen_ack_routine, nullptr);
     pthread_create(&send_packet_t, nullptr, &send_packet_routine, nullptr);
@@ -284,6 +300,6 @@ int main(int argc, char** argv){
     pthread_join(send_packet_t, nullptr);
 
     pthread_join(listen_packet_t, nullptr);
-    //pthread_join(send_ack_t, nullptr);
+    pthread_join(send_ack_t, nullptr);
 
 }
