@@ -66,6 +66,14 @@ std::vector<unsigned int> receivedAckVec;
 
 //----------------Utilities--------------------
 
+void shutdownThreads(){
+        pthread_cancel(listen_ack_t);
+        pthread_cancel(backn_t);
+        pthread_cancel(send_ack_t);
+        close(socket_desc_1);
+        close(socket_desc_2);   
+}
+
 int clipper(char (&c_content)[11], char *inputBuffer, int start, int end){
     for(int i = start ; i < end ; ++i){
         c_content[i%11] = inputBuffer[i];
@@ -178,7 +186,10 @@ void* listen_packet_routine(void* args){
             }
             if(newLineCount == 3){ //termination condition
                 pthread_cancel(send_ack_t);
+                pthread_cancel(send_packet_t);
+                pthread_cancel(listen_ack_t);
                 terminate = true;
+                return nullptr;
             }
         }
         if(terminate){return nullptr;} //if termination signal is given
@@ -252,16 +263,17 @@ void* send_packet_routine(void* args){
             newLineCount = 0;
         }
         if(newLineCount == 3){ //termination condition
+            pthread_cancel(send_ack_t);
+            pthread_cancel(listen_packet_t);
             pthread_cancel(listen_ack_t);
-            pthread_cancel(backn_t);
-            close(socket_desc_1);
-            return 0;
+            terminate = true;
+            return nullptr;
         }
     }
 }
 
 void* backn_routine(void* args){
-    while(1){
+    while(!terminate){
         if(S_lastValidID != windowTail - 1 ){ //if there are still packets pending
             std::chrono::duration<double> elapsedTime = std::chrono::system_clock::now() - tailTimeout;
             if(elapsedTime.count() > timeoutDuration){
@@ -281,6 +293,7 @@ void* backn_routine(void* args){
         tailTimeout = std::chrono::system_clock::now();
         }
     }
+    return nullptr;
 }
 
 int main(int argc, char** argv){
@@ -301,5 +314,8 @@ int main(int argc, char** argv){
 
     pthread_join(listen_packet_t, nullptr);
     pthread_join(send_ack_t, nullptr);
+
+    close(socket_desc_1);
+    close(socket_desc_2);
 
 }
