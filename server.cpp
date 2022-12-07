@@ -225,6 +225,39 @@ void* send_ack_routine(void* args){
     return nullptr;
 }
 
+void* send_packet_routine(void* args){
+    while(1){
+        getline(&inputBuffer, &inputBufferSize ,stdin);
+        packetDivs = ((strlen(inputBuffer)/contentsize)+1);
+
+        for(int i = 0 ; i<packetDivs; ++i){
+            while(S_lastValidID >= windowHead){continue;} //only sending packets up to window head
+            ++S_lastValidID;
+            client_packet_2->id = S_lastValidID;
+            clipper(client_packet_2->content,inputBuffer,i*contentsize,(i+1)*contentsize);
+            packetStackManager(*client_packet_2); //add the to be sent package to the window package stack
+            if(sendto(socket_desc_2, client_packet_2, packetsize, 0,
+                (struct sockaddr*)&server_addr_2, server_struct_length) < 0){
+                perror("Unable to send message\n");
+                exit(EXIT_FAILURE);
+            }
+            tailTimeout = std::chrono::system_clock::now(); //set the timer if a package is sent
+        }
+        if(!strcmp(inputBuffer,"\n")){
+            ++newLineCount;
+        }
+        else{
+            newLineCount = 0;
+        }
+        if(newLineCount == 3){ //termination condition
+            pthread_cancel(listen_ack_t);
+            pthread_cancel(backn_t);
+            close(socket_desc_2);
+            return 0;
+        }
+    }
+}
+
 int main(int argc, char** argv){
     begin();
     setSocket_1();
@@ -233,12 +266,12 @@ int main(int argc, char** argv){
     pthread_create(&send_ack_t, nullptr, &send_ack_routine, nullptr);
 
     pthread_create(&listen_ack_t, nullptr, &listen_ack_routine, nullptr);
-    //pthread_create(&send_packet_t, nullptr, &send_packet_routine, nullptr);
+    pthread_create(&send_packet_t, nullptr, &send_packet_routine, nullptr);
     //pthread_create(&backn_t, nullptr, &backn_routine, nullptr);
 
     //pthread_join(backn_t, nullptr);
     pthread_join(listen_ack_t, nullptr);
-    //pthread_join(send_packet_t, nullptr);
+    pthread_join(send_packet_t, nullptr);
 
     pthread_join(listen_packet_t, nullptr);
     pthread_join(send_ack_t, nullptr);
