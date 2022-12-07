@@ -133,7 +133,7 @@ int setSocket_1(){
     
     server_addr_1.sin_family = AF_INET;
     server_addr_1.sin_port = htons(port); //set the port
-    server_addr_1.sin_addr.s_addr = inet_addr("127.0.0.1"); //set the IP's
+    server_addr_1.sin_addr.s_addr = inet_addr("172.24.0.10"); //set the IP's
     
     if(bind(socket_desc_1, (struct sockaddr*)&server_addr_1, sizeof(server_addr_1)) < 0){ // make the binding for setting port and IP
         perror("Couldn't bind to the port\n");
@@ -152,7 +152,7 @@ int setSocket_2(){
     
     server_addr_2.sin_family = AF_INET;
     server_addr_2.sin_port = htons(port+1); //set the port
-    server_addr_2.sin_addr.s_addr =  inet_addr("127.0.0.1"); //set the IP
+    server_addr_2.sin_addr.s_addr =  inet_addr("172.24.0.20"); //set the IP
     
     return 0;
 }
