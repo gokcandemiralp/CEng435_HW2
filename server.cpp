@@ -265,6 +265,30 @@ void* send_packet_routine(void* args){
     }
 }
 
+void* backn_routine(void* args){
+    while(!terminate){
+        if(S_lastValidID != windowTail - 1 ){ //if there are still packets pending
+            std::chrono::duration<double> elapsedTime = std::chrono::system_clock::now() - tailTimeout;
+            if(elapsedTime.count() > timeoutDuration){
+                printf("Packet: %d timed out\n",windowTail);
+                for(int i = stackSize-1 ; i >= 0 ; --i){
+                    myPacket sendPacket = packetStack[i];
+                    if(sendto(socket_desc_2, &sendPacket, packetsize, 0,
+                            (struct sockaddr*)&server_addr_2, server_struct_length) < 0){
+                            perror("Unable to send message\n");
+                            exit(EXIT_FAILURE);
+                    }
+                }
+                tailTimeout = std::chrono::system_clock::now();
+            }
+        }
+        else{
+        tailTimeout = std::chrono::system_clock::now();
+        }
+    }
+    return nullptr;
+}
+
 int main(int argc, char** argv){
     begin();
     setSocket_1();
@@ -274,9 +298,9 @@ int main(int argc, char** argv){
 
     pthread_create(&listen_ack_t, nullptr, &listen_ack_routine, nullptr);
     pthread_create(&send_packet_t, nullptr, &send_packet_routine, nullptr);
-    //pthread_create(&backn_t, nullptr, &backn_routine, nullptr);
+    pthread_create(&backn_t, nullptr, &backn_routine, nullptr);
 
-    //pthread_join(backn_t, nullptr);
+    pthread_join(backn_t, nullptr);
     pthread_join(listen_ack_t, nullptr);
     pthread_join(send_packet_t, nullptr);
 
