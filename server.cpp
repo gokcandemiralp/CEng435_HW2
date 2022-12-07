@@ -177,7 +177,11 @@ void* listen_packet_routine(void* args){
             }
             if(newLineCount == 3){ //termination condition
                 pthread_cancel(send_ack_t);
+                pthread_cancel(send_packet_t);
+                pthread_cancel(listen_ack_t);
+                //pthread_cancel(backn_t);
                 terminate = true;
+                return nullptr;
             }
         }
         if(terminate){return nullptr;} //if termination signal is given
@@ -250,10 +254,12 @@ void* send_packet_routine(void* args){
             newLineCount = 0;
         }
         if(newLineCount == 3){ //termination condition
+            pthread_cancel(send_ack_t);
+            pthread_cancel(listen_packet_t);
             pthread_cancel(listen_ack_t);
-            pthread_cancel(backn_t);
-            close(socket_desc_2);
-            return 0;
+            //pthread_cancel(backn_t);
+            terminate = true;
+            return nullptr;
         }
     }
 }
@@ -275,4 +281,7 @@ int main(int argc, char** argv){
 
     pthread_join(listen_packet_t, nullptr);
     pthread_join(send_ack_t, nullptr);
+
+    close(socket_desc_1);
+    close(socket_desc_2);
 }
