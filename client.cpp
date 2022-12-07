@@ -47,7 +47,8 @@ bool wait_ack_listen = true;
 
 std::chrono::_V2::system_clock::time_point tailTimeout;
 
-int newLineCount = 0;
+int newLineCount_listen = 0;
+int newLineCount_send = 0;
 int packetDivs = 1;
 
 myPacket *server_packet_1;
@@ -179,12 +180,12 @@ void* listen_packet_routine(void* args){
             eraseWithID(R_lastValidID); //erase the already printed packet prom the buffer
             ++R_lastValidID;
             if(!strcmp(temp_packet->content,"\n")){
-                ++newLineCount;
+                ++newLineCount_listen;
             }
             else{
-                newLineCount = 0;
+                newLineCount_listen = 0;
             }
-            if(newLineCount == 3){ //termination condition
+            if(newLineCount_listen == 3){ //termination condition
                 pthread_cancel(send_ack_t);
                 pthread_cancel(send_packet_t);
                 pthread_cancel(listen_ack_t);
@@ -257,12 +258,12 @@ void* send_packet_routine(void* args){
             tailTimeout = std::chrono::system_clock::now(); //set the timer if a package is sent
         }
         if(!strcmp(inputBuffer,"\n")){
-            ++newLineCount;
+            ++newLineCount_send;
         }
         else{
-            newLineCount = 0;
+            newLineCount_send = 0;
         }
-        if(newLineCount == 3){ //termination condition
+        if(newLineCount_send == 3){ //termination condition
             pthread_cancel(send_ack_t);
             pthread_cancel(listen_packet_t);
             pthread_cancel(listen_ack_t);
